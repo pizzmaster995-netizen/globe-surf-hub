@@ -1,2 +1,0 @@
-# globe-surf-hub
-Surfhub
