@@ -23,17 +23,6 @@ interface Spot {
   suitable: string[];
 }
 
-interface CampListing {
-  id: string;
-  title: string;
-  location: string;
-  country: string;
-  price: string;
-  rating: number;
-  image: string;
-  type: 'Camp' | 'Rental';
-}
-
 const CONTINENTS = ['Europa', 'Afrika', 'Asien', 'Amerika', 'Ozeanien'];
 
 const CONT_COLORS: Record<string, string> = {
@@ -415,13 +404,140 @@ async function fetchSpotImages(s: Spot): Promise<string[]> {
   return result;
 }
 
-const CAMPS_LISTINGS: CampListing[] = [
-  { id: 'c1', title: 'Solid Surf House Taghazout', location: 'Taghazout, Marokko', country: 'Marokko', price: 'ab 449 € / Woche', rating: 4.9, image: 'https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?w=600', type: 'Camp' },
-  { id: 'c2', title: 'Bali Surf & Yoga Villa', location: 'Canggu, Bali', country: 'Indonesien', price: 'ab 599 € / Woche', rating: 4.9, image: 'https://images.unsplash.com/photo-1540555700478-4be289fbecef?w=600', type: 'Camp' },
-  { id: 'c3', title: 'Ericeira Surf Lodge', location: 'Ericeira, Portugal', country: 'Portugal', price: 'ab 499 € / Woche', rating: 4.8, image: 'https://images.unsplash.com/photo-1510414842594-a61c69b5ae30?w=600', type: 'Camp' },
-  { id: 'c4', title: 'High-Performance Shortboard Rental', location: 'Taghazout & Imsouane', country: 'Marokko', price: '15 € / Tag', rating: 4.9, image: 'https://images.unsplash.com/photo-1531722569936-825d3dd91b15?w=600', type: 'Rental' },
-  { id: 'c5', title: 'Pro Surf Equipment & Softtop Rental', location: 'Canggu, Bali', country: 'Indonesien', price: '12 € / Tag', rating: 4.7, image: 'https://images.unsplash.com/photo-1502680390469-be75c86b636f?w=600', type: 'Rental' }
+
+/* ------------------------------------------------------------------ */
+/*  CAMPS, HOSTELS & RENTALS                                           */
+/* ------------------------------------------------------------------ */
+
+interface Listing {
+  id: string;
+  kind: 'Camp' | 'Hostel' | 'Rental';
+  iso: string;
+  region: string;
+  name: string;
+  price: string;
+  url: string;
+  info: string;
+  source: string;
+  guide: boolean;
+  continent: string;
+}
+
+const PSC = 'https://www.puresurfcamps.com/en/surf-camps/';
+const SA = 'https://thesurfatlas.com/';
+const HZ = 'https://www.hostelz.com/en/';
+
+// Zeile: Art (C=Camp, H=Hostel, R=Rental), Land, Region, Name, Preis, Link, Info, Quelle, Richtwert (1 = Durchschnittspreis der Region)
+// Preise sind Angaben der Anbieter bzw. Vergleichsportale und können sich ändern. Bitte immer beim Anbieter prüfen.
+type LRow = [string, string, string, string, string, string, string, string, number?];
+
+const LRAW: LRow[] = [
+  // ---------- PORTUGAL ----------
+  ["C", "PRT", "Algarve (Raposeira)", "Surf Camp Algarve", "ab 319 € / Woche", PSC + "surf-camps-portugal/surf-camp-algarve/", "Camp mit Pool und Garten mitten in der Natur. Frühstück, Strandtransfer und 2x Yoga inklusive.", "Pure Surfcamps"],
+  ["C", "PRT", "Algarve", "Surf Lodge Portugal", "ab 659 € / Woche", PSC + "surf-camps-portugal/surf-lodge-portugal/", "Lodge mit Pool und Meerblick. Frühstück, 1x Cross-Training und 2x Yoga inklusive.", "Pure Surfcamps"],
+  ["C", "PRT", "Ericeira", "Sunset Surf Lodge Ericeira", "ab 449 € / Woche", PSC + "surf-camps-portugal/sunset-surf-lodge-ericeira/", "Infinity-Pool und Sonnenuntergangs-Terrasse. Frühstück, 2x Yoga und Weinprobe inklusive.", "Pure Surfcamps"],
+  ["C", "PRT", "Ericeira", "Surf Villa Ericeira", "ab 449 € / Woche", PSC + "surf-camps-portugal/surf-villa-ericeira/", "Gehobene Villa mit Pool und Blick auf einen der besten Pointbreaks der Region.", "Pure Surfcamps"],
+  ["C", "PRT", "Ericeira", "Hostel & Surfcamp 55", "ca. 398 $ / 7 Tage", "https://hostelgeeks.com/best-surf-camps-in-portugal/", "Hostel mit Surf Camp für Beginner und Intermediate, 7 Tage inklusive Surfkurs.", "Hostelgeeks"],
+  ["C", "PRT", "Peniche", "Surf Camp Peniche", "", PSC + "surf-camps-portugal/surf-camp-peniche/", "Surf Camp in einem der bekanntesten Surf-Orte Portugals.", "Pure Surfcamps"],
+  ["C", "PRT", "Caparica (bei Lissabon)", "Surf Camp Caparica", "", PSC + "surf-camps-portugal/surf-camp-caparica/", "Surf Camp an der Costa da Caparica, nah an Lissabon.", "Pure Surfcamps"],
+  ["C", "PRT", "Azoren", "Surf Camp Azoren", "", PSC + "surf-camps-portugal/surf-camp-azores/", "Surf Camp auf den Azoren.", "Pure Surfcamps"],
+  ["H", "PRT", "Ericeira", "Villa dos Irmãos", "Dorm ab 13 $ / Nacht", HZ + "best-hostels-ericeira", "Von Hostelz als bestes Hostel in Ericeira gelistet.", "Hostelz"],
+  ["H", "PRT", "Ericeira", "WOT Ericeira Surf Hostel", "Dorm ab 28 $ / Nacht", HZ + "cheapest-hostels-in-ericeira", "Surf-Hostel etwa 1,6 km vom Zentrum, auf Hostelworld mit 9,0 bewertet.", "Hostelz"],
+  ["H", "PRT", "Peniche", "Peniche Surf Lodge", "Dorm ab 24 $ / Nacht", HZ + "best-hostels-peniche", "Hostel mit Fokus auf Surfkultur und sehr guten Bewertungen.", "Hostelz"],
+  ["H", "PRT", "Peniche", "Castaway", "Dorm ab 25 $ / Nacht", HZ + "best-hostels-peniche", "Abenteuerliches Hostel, bei Hostelz auf Platz 1 in Peniche.", "Hostelz"],
+  ["H", "PRT", "Peniche", "H2O Surfguide Hostel", "Dorm ab 21 $ / Nacht", HZ + "best-hostels-peniche", "Mitten in Peniche mit Surf-Angeboten.", "Hostelz"],
+  ["H", "PRT", "Peniche", "Pineapple Surf House", "Dorm ab 21 $ / Nacht", "https://www.hostelz.com/youth-hostels-in-peniche", "Günstiges Surf-Hostel in Peniche.", "Hostelz"],
+
+  // ---------- SPANIEN ----------
+  ["C", "ESP", "Fuerteventura (Lajares)", "Surf Camp Fuerteventura", "649 € / Woche", PSC + "surf-camps-canaries/surf-camp-fuerteventura/", "Ganzjährig warm. Frühstück, 5x Abendessen, Trekking-Tour und 3x Yoga inklusive.", "Pure Surfcamps"],
+  ["C", "ESP", "Teneriffa", "Surf Camp Teneriffa", "", PSC + "surf-camps-canaries/surf-camp-tenerife/", "Surf Camp auf den Kanaren.", "Pure Surfcamps"],
+  ["C", "ESP", "Baskenland (Zarautz)", "Surf Camp Zarautz", "", PSC + "surf-camps-spain/surf-camp-zarautz/", "Surf Camp im Baskenland.", "Pure Surfcamps"],
+  ["C", "ESP", "Kantabrien (Oyambre)", "Surf Camp Oyambre", "", PSC + "surf-camps-spain/surf-camp-oyambre/", "Surf Camp an der spanischen Nordküste.", "Pure Surfcamps"],
+
+  // ---------- FRANKREICH ----------
+  ["C", "FRA", "Seignosse (bei Hossegor)", "Surf Camp Seignosse", "ab 399 € / Woche", PSC + "surf-camps-france/surf-camp-seignosse/", "Surf House im Hostel-Stil mit Café, direkt am Strand. Frühstück, 5x Abendessen und 3x Yoga inklusive. Sandboden, gut für Anfänger.", "Pure Surfcamps"],
+  ["C", "FRA", "Moliets", "Pure Surf Camp Moliets", "", PSC + "surf-camps-france/pure-surf-camp-moliets/", "Surf Camp an der Atlantikküste, auch für Fortgeschrittene.", "Pure Surfcamps"],
+  ["C", "FRA", "Soustons Plage", "Surfcamp Soustons Plage", "", PSC + "surf-camps-france/surfcamp-soustons-plage/", "Neues Surf Camp in den Landes.", "Pure Surfcamps"],
+  ["H", "FRA", "Vieux-Boucau", "Surfcamp Hostel Vieux Boucau", "", PSC + "surf-camps-france/surfcamp-hostel-vieux-boucau/", "Surf-Hostel mit Surfkursen und Yoga.", "Pure Surfcamps"],
+
+  // ---------- MAROKKO ----------
+  ["C", "MAR", "Aourir (bei Taghazout)", "Sea View Surf Camp Morocco", "", PSC + "surf-camps-morocco/sea-view-surf-camp-morocco/", "Meerblick, Infinity-Pool und Sonnenterrasse. Anchor Point, Killer Point und Boilers sind in der Nähe.", "Pure Surfcamps"],
+  ["C", "MAR", "Aourir (bei Taghazout)", "Pure Surf Camp Morocco", "", PSC + "surf-camps-morocco/pure-surf-camp-morocco/", "Orientalischer Stil, Dachterrasse, Infinity-Pool und täglicher Surf-Shuttle.", "Pure Surfcamps"],
+  ["C", "MAR", "Aourir (bei Taghazout)", "Boutique Surf Camp Morocco", "", PSC + "surf-camps-morocco/boutique-surf-camp-morocco/", "Gehobene Variante der Pure-Camps in Marokko.", "Pure Surfcamps"],
+  ["C", "MAR", "Taghazout", "Amayour Surf & Yoga", "", "https://shakasurf.co.uk/morocco-surf-camp", "Camp in der Altstadt von Taghazout am Panorama Point, Mahlzeiten inklusive.", "Shaka Surf Camps"],
+  ["C", "MAR", "Taghazout", "Surf Berbère", "ab 230 £ / Woche", "https://www.stokedfortravel.com/?p=8099", "Camp mitten im Ort mit Zimmern und Dorms. Laut Reisebericht: Experienced 230 £, Learn-to-Surf 390 £, Surf & Yoga 430 £ pro Woche.", "Stoked for Travel"],
+  ["H", "MAR", "Taghazout", "Surf Waves Morocco Surf Camp", "550 £ / Woche (all inclusive)", "https://www.hostelworld.com/hostels/p/88683/surfwavesmorroco/", "Hostel mit Surf-Camp-Programm, Ausflügen und lockerer Atmosphäre.", "Hostelworld"],
+  ["H", "MAR", "Taghazout", "Sunset Surf House", "Dorm 12–17 $ / Nacht", "https://www.thebrokebackpacker.com/?p=807160", "Beliebtes Surf-Hostel im Ort.", "The Broke Backpacker"],
+  ["H", "MAR", "Taghazout", "Roof House Hostel", "Dorm 11–16 $ / Nacht", "https://www.thebrokebackpacker.com/?p=807160", "Gut für Alleinreisende, mit Dachterrasse.", "The Broke Backpacker"],
+  ["H", "MAR", "Taghazout", "Happy Surf Hostel", "Dorm 10–15 $ / Nacht", "https://www.thebrokebackpacker.com/?p=807160", "Günstiges Hostel im Zentrum von Taghazout.", "The Broke Backpacker"],
+  ["H", "MAR", "Taghazout", "Welle Surf Morocco", "Dorm 10–15 $ / Nacht", "https://www.thebrokebackpacker.com/?p=807160", "Eher für Gäste, die abends etwas erleben wollen.", "The Broke Backpacker"],
+  ["R", "MAR", "Taghazout", "Surf Maroc Shop & Hire Centre", "Preise vor Ort", "https://site2024.surfmaroc.com/?p=28638", "Große Auswahl an Boards und Neoprenanzügen, Miete pro Tag, Woche oder Monat. Dazu Surfskates und E-Bikes.", "Surf Maroc"],
+  ["R", "MAR", "Taghazout", "Richtwert Taghazout", "Board 100–150 DH / Tag, Neopren 50 DH / Tag", "https://passportandstamps.com/?p=24017", "Übliche Preise bei den Verleihern im Ort.", "Passport & Stamps", 1],
+
+  // ---------- SRI LANKA ----------
+  ["C", "LKA", "Kathaluwa (Ahangama)", "Beachfront Surf Camp Sri Lanka", "499 € / Woche", PSC + "surf-camps-sri-lanka/beachfront-surf-camp-sri-lanka/", "Direkt am Strand. Guiding oder Surfkurs, Verpflegung und 5x Yoga inklusive.", "Pure Surfcamps"],
+  ["C", "LKA", "Südküste", "Surf House Sri Lanka", "", PSC + "surf-camps-sri-lanka/surfhouse-sri-lanka/", "Partner-Camp von Pure Surfcamps an der Südküste.", "Pure Surfcamps"],
+  ["C", "LKA", "Weligama / Hiriketiya", "Kima Surf Camp", "", "https://kimasurf.com/", "Camps mit Surf-Guiding, Yoga und vielen veganen Gerichten.", "Kima Surf"],
+  ["C", "LKA", "Ahangama", "Soul & Surf", "ab 1.195 £ / Woche", "https://lushpalm.com/surf-camps-for-adults", "Gehobenes All-inclusive Surf- und Yoga-Retreat (7 oder 14 Nächte).", "Lushpalm"],
+  ["C", "LKA", "Ahangama", "Lapoint Surf Camp", "", "https://lapointcamps.com", "Surf Camp in Ahangama.", "Lapoint"],
+  ["H", "LKA", "Weligama", "Hangtime Hostel", "Dorm Ø 5–9 $ / Nacht", "https://hostelgeeks.com/best-hostels-in-weligama/", "Laut Hostelgeeks bestes Hostel in Weligama für Alleinreisende.", "Hostelgeeks"],
+  ["H", "LKA", "Weligama", "Beatroot Hostel", "Dorm Ø 5–9 $ / Nacht", "https://hostelgeeks.com/best-hostels-in-weligama/", "Surf-Hostel in Weligama.", "Hostelgeeks"],
+  ["H", "LKA", "Weligama", "YoYo Surf Hostel", "Dorm Ø 5–9 $ / Nacht", "https://hostelgeeks.com/best-hostels-in-weligama/", "Party-Hostel in Weligama.", "Hostelgeeks"],
+
+  // ---------- INDONESIEN ----------
+  ["C", "IDN", "Canggu (Bali)", "Surf House Bali Canggu", "ab 553 € / Woche", PSC + "bali/surfhouse-canggu/", "Surf- und Yoga-Resort mit Meerblick. 2x täglich Surf-Guiding und Frühstück inklusive.", "Pure Surfcamps"],
+  ["C", "IDN", "Seminyak (Bali)", "Surf Camp Bali Seminyak", "ab 427 € / Woche", PSC + "bali/surf-camp-seminyak", "Tropischer Garten mit Pool. 2x täglich Surf-Guiding, Yoga (Mo–Sa) und Frühstück inklusive.", "Pure Surfcamps"],
+  ["C", "IDN", "Canggu, Seminyak, Uluwatu", "Kima Surf Bali", "ca. 24 € / Nacht", "https://kimasurf.com/", "Mehrere Camps auf Bali mit Surf-Guiding und Yoga. Preis laut Reiseführer, bitte aktuell prüfen.", "Stoked for Travel"],
+  ["C", "IDN", "Uluwatu", "Dreamsea Uluwatu", "25–85 € / Nacht", "https://www.stokedfortravel.com/?p=9816", "Camp nahe Padang Padang mit Surfkursen.", "Stoked for Travel"],
+  ["C", "IDN", "Medewi", "Brown Sugar Surf Camp", "ab 57 $ / Nacht", "https://www.stokedfortravel.com/?p=9816", "Camp direkt am linken Pointbreak Medewi.", "Stoked for Travel"],
+  ["C", "IDN", "Canggu", "Stormrider Surfcamp", "", "https://www.carvemag.com/stormrider-surfcamp-bali-2/", "Ruhige Lage am Rand von Canggu zwischen Reisfeldern.", "Carve Magazine"],
+  ["C", "IDN", "Padang Padang (Bali)", "Rapture Surfcamp Bali", "", "https://www.rapturecamps.com", "Teil des Rapture-Netzwerks mit Camps in Bali, Portugal, Nicaragua und Costa Rica.", "Rapture Camps"],
+  ["C", "IDN", "Lombok", "Xanadu Surf & Yoga", "ca. 1.000 $ / Woche", SA + "?p=12319", "Luxuriöse Unterkunft mit Surf-Guiding und Unterricht.", "The Surf Atlas"],
+  ["H", "IDN", "Canggu (Bali)", "Lay Day Hostel", "Surfkurs unter 500 $ / Woche", SA + "?p=13754", "Bestbewertetes Surf-Hostel in Canggu (Hostelworld 9,3). Die Woche enthält täglich 2 Stunden Surfkurs.", "The Surf Atlas"],
+  ["H", "IDN", "Canggu (Bali)", "Clandestino Hostel", "", SA + "?p=13754", "Gut zum Feiern, laut Quelle.", "The Surf Atlas"],
+  ["R", "IDN", "Canggu (Bali)", "Surf House Bali Canggu Verleih", "Board 12 € / Tag, Versicherung 10 € / Tag", PSC + "bali/surfhouse-canggu/", "Leash und Rashguard inklusive. Eine Board-Versicherung für Reparaturen ist optional.", "Pure Surfcamps"],
+  ["R", "IDN", "Bali (Canggu, Kuta, Seminyak)", "Richtwert Bali", "5–15 $ / Tag", "https://12go.asia/en/travel/canggu", "Übliche Preise in den Verleih-Shops am Strand. Verhandeln ist oft möglich.", "12go", 1],
+
+  // ---------- COSTA RICA, NICARAGUA, EL SALVADOR ----------
+  ["C", "CRI", "Nicoya-Halbinsel", "Barefoot Surf Camp Costa Rica", "", "https://www.nspsurfboards.com/?p=45157", "Persönliches Coaching für Beginner und Intermediate.", "NSP Surfboards"],
+  ["C", "CRI", "Puntarenas", "Bodhi Surf & Yoga", "", "https://www.nspsurfboards.com/?p=45157", "Eco-Retreat mit Fokus auf Surf und Yoga für Paare, Familien und Einzelreisende.", "NSP Surfboards"],
+  ["C", "CRI", "Santa Teresa", "Jakera Adventure", "4 Wochen ab 3.316 $", SA + "surf-camps/surf-camps-for-beginners/", "Vierwochenpaket, das Surfen und Spanisch lernen verbindet.", "The Surf Atlas"],
+  ["C", "CRI", "Santa Teresa", "Nantipa", "ab 3.600 $ p. P.", "https://lushpalm.com/surf-camps-for-adults", "Luxuriöses Boutique-Hotel direkt am Strand mit mehreren Breaks vor der Tür. Preis für das Surf-Paket im Doppelzimmer.", "Lushpalm"],
+  ["C", "NIC", "Rivas", "Barefoot Surf Camp Nicaragua", "", "https://www.nspsurfboards.com/?p=45157", "Surf Camp in Nicaragua.", "NSP Surfboards"],
+  ["C", "SLV", "El Tunco", "Casa Makoi", "unter 1.000 $", SA + "?p=12319", "Camp in El Tunco, laut Quelle für unter 1.000 $.", "The Surf Atlas"],
+
+  // ---------- SÜDAFRIKA, AUSTRALIEN, USA ----------
+  ["C", "ZAF", "Jeffreys Bay", "Island Vibe", "", "https://islandvibe.co.za", "Surf-Unterkunft in J-Bay, bekannt für den berühmten Pointbreak.", "Island Vibe"],
+  ["C", "AUS", "New South Wales", "Mojo Surf – Spot X", "", "https://mojosurf.com", "Surf Camp in New South Wales.", "Mojo Surf"],
+  ["H", "AUS", "Sydney (Bondi)", "Bondi Backpackers", "", "https://www.hostelworld.com/blog/surf-hostels/", "Von Hostelworld als Surf-Hostel empfohlen.", "Hostelworld"],
+
+  // ---------- RENTALS ----------
+  ["R", "FRA", "Hossegor", "Hossegor Surf School (Verleih)", "Board 10 € / 2 Std., Neopren 5 € / 2 Std.", "https://hossegor-surf.fr/surfboard-renting/?lang=en", "Verleih nur für Schüler der Surfschule und nur zu den Kurszeiten bei Ebbe. Ausweis als Pfand.", "Hossegor Surf School"],
+  ["R", "FRA", "Hossegor", "Hossegor Surf Center", "ab 15 €", "https://www.yumping.com/en/water-sports/hossegor-surf-center--e19761666", "Verleih von Surfboards und SUP am Strand Les Culs Nus, täglich 8 bis 20 Uhr.", "Yumping"],
+  ["R", "FRA", "Hossegor", "Surf'in Landes Rental", "", "https://www.tourismelandes.com/?p=590586", "Boards und Neoprenanzüge für alle Level, kostenlose Lieferung nach Hossegor und Umgebung.", "Tourisme Landes"],
+  ["R", "PRT", "Portugal", "Richtwert Portugal", "Board + Neopren ab 30 € / Tag", "https://esim.holafly.com/travel-tips/surf-portugal", "Durchschnittlicher Preis für Board und Neoprenanzug in den Surf-Orten.", "Holafly", 1],
+  ["R", "AUS", "Byron Bay", "Golden Breed Byron Bay", "Halbtag 25 $, Tag 40 $, 7 Tage 140 $ (AUD)", "https://goldenbreed.com.au/pages/byron-bay-board-hire", "Surfboard- und Neopren-Verleih im Laden (10 Lawson Street), täglich 8:30 bis 17 Uhr.", "Golden Breed"],
+  ["R", "AUS", "Gold Coast", "Tradewind Surf (Mobile Hire)", "1. Tag 60 $, jeder weitere Tag 15 $ (AUD)", "https://tradewindsurf.com.au/travelblog/mobile-surfboard-hire-gold-coast/", "Boards werden geliefert und wieder abgeholt, von Coolangatta bis Main Beach.", "Tradewind Surf"],
+  ["R", "USA", "Hawaii (Waikiki)", "Ohana Surf Project", "im Go City Pass enthalten", "https://gocity.com/en/oahu/attractions/waikiki-surfboard-rental", "Ganztags-Longboard mit Rashguard und Reef-Schuhen am Queen’s Surf Beach, gut für Anfänger.", "Go City"],
+  ["R", "USA", "Hawaii (Oahu)", "Hawaii Surfboard Rentals", "", "http://www.hawaiisurfboardrentals.com", "Longboards zum Mieten für mehrere Tage. Preise auf der Website.", "Hawaii Surfboard Rentals"]
 ];
+
+const KIND_OF: Record<string, 'Camp' | 'Hostel' | 'Rental'> = { C: 'Camp', H: 'Hostel', R: 'Rental' };
+
+const LISTINGS: Listing[] = LRAW.map((r, i) => ({
+  id: `l${i}`,
+  kind: KIND_OF[r[0]],
+  iso: r[1],
+  region: r[2],
+  name: r[3],
+  price: r[4],
+  url: r[5],
+  info: r[6],
+  source: r[7],
+  guide: r[8] === 1,
+  continent: COUNTRIES[r[1]].continent
+}));
+
 
 /* ------------------------------------------------------------------ */
 /*  APP                                                                */
@@ -935,52 +1051,25 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 2: CAMPS */}
+        {/* TAB 2: CAMPS & HOSTELS */}
         {activeTab === 'camps' && (
-          <div className="max-w-7xl w-full mx-auto p-6 space-y-6 flex-1">
-            <h2 className="text-xl font-bold">Surfcamps & Hostels</h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {CAMPS_LISTINGS.filter(l => l.type === 'Camp').map(camp => (
-                <div key={camp.id} className="bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden hover:border-cyan-500/50 transition flex flex-col">
-                  <img src={camp.image} alt={camp.title} className="w-full h-48 object-cover" />
-                  <div className="p-5 flex-1 flex flex-col justify-between space-y-4">
-                    <div>
-                      <span className="text-xs bg-cyan-500/10 text-cyan-400 px-2.5 py-1 rounded-full font-medium">{camp.country}</span>
-                      <h3 className="font-bold text-lg mt-2">{camp.title}</h3>
-                      <p className="text-xs text-slate-400">{camp.location}</p>
-                    </div>
-                    <div className="flex justify-between items-center pt-3 border-t border-slate-900">
-                      <span className="font-bold text-cyan-400 text-sm">{camp.price}</span>
-                      <button className="bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs px-4 py-2 rounded-xl transition">Anfragen</button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+          <ListingBrowser
+            key="camps"
+            kinds={['Camp', 'Hostel']}
+            title="Surfcamps & Hostels"
+            intro="Klicke auf einen Kontinent, dann auf ein Land, um Camps und Surf-Hostels mit Preisen und Links zu sehen."
+            filters={[['Alle', ['Camp', 'Hostel']], ['Surfcamps', ['Camp']], ['Hostels', ['Hostel']]]}
+          />
         )}
 
         {/* TAB 3: RENTALS */}
         {activeTab === 'rentals' && (
-          <div className="max-w-7xl w-full mx-auto p-6 space-y-6 flex-1">
-            <h2 className="text-xl font-bold">Rentals & Equipment</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {CAMPS_LISTINGS.filter(l => l.type === 'Rental').map(rental => (
-                <div key={rental.id} className="bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden p-5 flex gap-4 items-center">
-                  <img src={rental.image} alt={rental.title} className="w-28 h-28 object-cover rounded-xl" />
-                  <div className="flex-1 space-y-2">
-                    <span className="text-xs bg-slate-900 text-cyan-400 px-2 py-0.5 rounded border border-slate-800">Verleih</span>
-                    <h3 className="font-bold text-md">{rental.title}</h3>
-                    <p className="text-xs text-slate-400">{rental.location}</p>
-                    <div className="flex justify-between items-center pt-2">
-                      <span className="font-bold text-cyan-400">{rental.price}</span>
-                      <button className="bg-cyan-500 text-slate-950 font-bold text-xs px-3.5 py-2 rounded-xl">Buchen</button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+          <ListingBrowser
+            key="rentals"
+            kinds={['Rental']}
+            title="Rentals & Equipment"
+            intro="Boards und Neoprenanzüge leihen. Einträge mit „Richtwert“ zeigen übliche Preise in der Region, die anderen sind konkrete Anbieter."
+          />
         )}
 
         {/* TAB 4: CHAT */}
@@ -1177,6 +1266,207 @@ function SpotDetail({ spot, onBack }: { spot: Spot; onBack: () => void }) {
           Allgemeine Einschätzung. Prüfe vor Ort immer aktuelle Bedingungen und frage Locals. Fotos: Wikimedia Commons, nur Bilder mit Surf-Bezug zum Spot.
         </p>
       </div>
+    </div>
+  );
+}
+
+
+/* Wiederverwendbare Übersicht: Kontinent -> Land -> Angebote (gleiches Muster wie die Weltkarte) */
+function ListingBrowser({ kinds, title, intro, filters }: {
+  kinds: string[];
+  title: string;
+  intro: string;
+  filters?: [string, string[]][];
+}) {
+  const [cont, setCont] = useState<string | null>(null);
+  const [iso, setIso] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState(0);
+
+  const activeKinds = filters ? filters[filter][1] : kinds;
+  const base = useMemo(() => LISTINGS.filter(l => activeKinds.includes(l.kind)), [activeKinds]);
+
+  const countriesIn = (c: string) =>
+    Array.from(new Set(base.filter(l => l.continent === c).map(l => l.iso)))
+      .sort((a, b) => base.filter(l => l.iso === b).length - base.filter(l => l.iso === a).length);
+
+  const q = query.trim().toLowerCase();
+  const results = q
+    ? base.filter(l => `${l.name} ${l.region} ${COUNTRIES[l.iso].name}`.toLowerCase().includes(q))
+    : [];
+  const shown = iso ? base.filter(l => l.iso === iso) : [];
+
+  const goContinent = (c: string | null) => { setCont(c); setIso(null); };
+
+  return (
+    <div className="max-w-7xl w-full mx-auto p-6 space-y-6 flex-1">
+      <div>
+        <h2 className="text-xl font-bold">{title}</h2>
+        <p className="text-xs text-slate-400 mt-1">{intro}</p>
+      </div>
+
+      {/* Breadcrumbs, Filter & Suche */}
+      <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-3">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center space-x-2 text-sm font-semibold flex-wrap gap-y-2">
+            <button
+              onClick={() => goContinent(null)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl transition ${!cont ? 'bg-cyan-500 text-slate-950 font-bold' : 'bg-slate-900 text-slate-300 hover:bg-slate-800'}`}
+            >
+              <Globe className="w-4 h-4" /> Weltweit
+            </button>
+            {cont && (
+              <>
+                <ChevronRight className="w-4 h-4 text-slate-600" />
+                <button
+                  onClick={() => goContinent(cont)}
+                  className={`px-3 py-1.5 rounded-xl transition ${!iso ? 'bg-cyan-500 text-slate-950 font-bold' : 'bg-slate-900 text-slate-300 hover:bg-slate-800'}`}
+                >
+                  {cont}
+                </button>
+              </>
+            )}
+            {iso && (
+              <>
+                <ChevronRight className="w-4 h-4 text-slate-600" />
+                <span className="bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 px-3 py-1.5 rounded-xl">
+                  {COUNTRIES[iso].name}
+                </span>
+              </>
+            )}
+          </div>
+
+          <div className="relative min-w-[240px]">
+            <Search className="w-4 h-4 absolute left-3.5 top-3 text-slate-500" />
+            <input
+              type="text"
+              placeholder="Name, Ort oder Land suchen..."
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs focus:outline-none focus:border-cyan-500"
+            />
+          </div>
+        </div>
+
+        <div className="pt-2 border-t border-slate-900 flex flex-wrap gap-2 items-center">
+          {cont && (
+            <button
+              onClick={() => (iso ? setIso(null) : goContinent(null))}
+              className="text-xs text-slate-400 hover:text-cyan-400 flex items-center gap-1 mr-3"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" /> {iso ? `Zurück zu ${cont}` : 'Zurück zur Weltübersicht'}
+            </button>
+          )}
+          {filters && (
+            <div className="ml-auto flex items-center gap-1.5 flex-wrap">
+              {filters.map(([label], i) => (
+                <button
+                  key={label}
+                  onClick={() => setFilter(i)}
+                  className={`px-3 py-1 rounded-xl text-xs font-medium transition ${filter === i ? 'bg-cyan-500 text-slate-950 font-bold' : 'bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-800'}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Inhalt */}
+      {q ? (
+        <>
+          <p className="text-sm font-bold text-slate-300">Suchergebnisse ({results.length})</p>
+          <ListingGrid items={results} showCountry />
+        </>
+      ) : !cont ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {CONTINENTS.map(c => {
+            const n = base.filter(l => l.continent === c).length;
+            return (
+              <button
+                key={c}
+                disabled={n === 0}
+                onClick={() => goContinent(c)}
+                className="text-left bg-slate-950 border border-slate-800 hover:border-cyan-500 disabled:opacity-40 disabled:hover:border-slate-800 rounded-2xl p-5 transition flex items-center justify-between"
+                style={{ borderLeft: `4px solid ${CONT_COLORS[c]}` }}
+              >
+                <div>
+                  <h3 className="font-bold text-lg text-white">{c}</h3>
+                  <p className="text-xs text-slate-400 mt-1">{countriesIn(c).length} Länder · {n} Angebote</p>
+                </div>
+                <ChevronRight className="w-5 h-5 text-slate-500" />
+              </button>
+            );
+          })}
+        </div>
+      ) : !iso ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {countriesIn(cont).map(c => (
+            <button
+              key={c}
+              onClick={() => setIso(c)}
+              className="text-left bg-slate-950 border border-slate-800 hover:border-cyan-500 rounded-2xl p-5 transition flex items-center justify-between"
+              style={{ borderLeft: `4px solid ${CONT_COLORS[cont]}` }}
+            >
+              <div>
+                <h3 className="font-bold text-white">{COUNTRIES[c].name}</h3>
+                <p className="text-xs text-slate-400 mt-1">{base.filter(l => l.iso === c).length} Angebote</p>
+              </div>
+              <ChevronRight className="w-5 h-5 text-slate-500" />
+            </button>
+          ))}
+        </div>
+      ) : (
+        <ListingGrid items={shown} />
+      )}
+
+      <p className="text-[11px] text-slate-500">
+        Preise stammen von den Anbieter-Websites oder Vergleichsportalen (jeweils unter „Quelle“) und können sich ändern. Bitte immer auf der Website des Anbieters prüfen. Die Einträge sind eine Auswahl und keine Empfehlung.
+      </p>
+    </div>
+  );
+}
+
+function ListingGrid({ items, showCountry }: { items: Listing[]; showCountry?: boolean }) {
+  if (items.length === 0) return <p className="text-xs text-slate-500">Keine Einträge gefunden.</p>;
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+      {items.map(l => (
+        <div key={l.id} className="bg-slate-950 border border-slate-800 hover:border-cyan-500/50 rounded-2xl p-5 flex flex-col justify-between gap-4 transition">
+          <div className="space-y-2">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                {l.kind === 'Camp' ? 'Surfcamp' : l.kind === 'Hostel' ? 'Hostel' : 'Verleih'}
+              </span>
+              {l.guide && (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">Richtwert</span>
+              )}
+            </div>
+            <h3 className="font-bold text-white">{l.name}</h3>
+            <p className="text-xs text-slate-400">
+              {l.region}{showCountry ? `, ${COUNTRIES[l.iso].name}` : ''}
+            </p>
+            <p className="text-xs text-slate-300">{l.info}</p>
+          </div>
+          <div className="space-y-3">
+            <div className="flex items-end justify-between gap-3 pt-3 border-t border-slate-900">
+              <span className={`text-sm font-bold ${l.price ? 'text-cyan-400' : 'text-slate-500'}`}>
+                {l.price || 'Preis auf der Website'}
+              </span>
+              <a
+                href={l.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="shrink-0 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs px-4 py-2 rounded-xl transition"
+              >
+                Zur Website
+              </a>
+            </div>
+            <p className="text-[10px] text-slate-500">Quelle: {l.source}</p>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
