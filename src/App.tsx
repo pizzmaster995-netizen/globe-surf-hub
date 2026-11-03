@@ -32,7 +32,6 @@ interface CampListing {
   type: 'Camp' | 'Rental';
 }
 
-// Geografische Zentrumskoordinaten & Zoom-Level für die automatische Kartenführung
 const CONTINENT_COORDS: Record<string, { lat: number; lng: number; zoom: number }> = {
   Welt: { lat: 20, lng: 0, zoom: 2 },
   Europa: { lat: 48.0, lng: 10.0, zoom: 4 },
@@ -50,7 +49,7 @@ const COUNTRY_COORDS: Record<string, { lat: number; lng: number; zoom: number }>
   Indonesien: { lat: -0.7893, lng: 113.9213, zoom: 5 },
   Philippinen: { lat: 12.8797, lng: 121.7740, zoom: 6 },
   'Sri Lanka': { lat: 7.8731, lng: 80.7718, zoom: 7 },
-  USA: { lat: 21.3069, lng: -157.8583, zoom: 7 }, // Hawaii Fokussierung
+  USA: { lat: 21.3069, lng: -157.8583, zoom: 7 },
   Australien: { lat: -25.2744, lng: 133.7751, zoom: 4 },
   Neuseeland: { lat: -40.9006, lng: 174.8860, zoom: 5 },
   Mexiko: { lat: 23.6345, lng: -102.5528, zoom: 5 },
@@ -112,16 +111,16 @@ export default function App() {
 
   const mapRef = useRef<any>(null);
 
-  // Steuerung der interaktiven Leaflet-Karte
+  // Steuerung der interaktiven Leaflet-Karte mit automatischer Größenanpassung
   useEffect(() => {
     if (activeTab === 'spots' && (window as any).L) {
       const L = (window as any).L;
       const container = L.DomUtil.get('leaflet-map');
+      
       if (container != null) {
         container._leaflet_id = null;
       }
 
-      // Karte initialisieren
       const map = L.map('leaflet-map', { zoomControl: true }).setView([20, 0], 2);
       mapRef.current = map;
 
@@ -129,7 +128,7 @@ export default function App() {
         attribution: '&copy; OpenStreetMap contributors'
       }).addTo(map);
 
-      // Pins rendern basierend auf Auswahl
+      // Pins hinzufügen
       GLOBAL_SPOTS.forEach(spot => {
         const marker = L.marker([spot.lat, spot.lng]).addTo(map);
         marker.bindPopup(`
@@ -140,10 +139,15 @@ export default function App() {
           </div>
         `);
       });
+
+      // WICHTIG: Erzwingt das Neu-Berechnen der Kartengröße nach dem Laden
+      setTimeout(() => {
+        map.invalidateSize();
+      }, 200);
     }
   }, [activeTab]);
 
-  // Sanfter Kamera-Zoom wenn ein Kontinent oder Land angeklickt wird
+  // Sanfter Kamera-Zoom
   useEffect(() => {
     if (mapRef.current) {
       if (selectedCountry !== 'Alle' && COUNTRY_COORDS[selectedCountry]) {
@@ -271,15 +275,13 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 1: INTERAKTIVE WELTKARTE MIT KONTINENT- & LÄNDER-ZOOM */}
+        {/* TAB 1: INTERAKTIVE WELTKARTE */}
         {activeTab === 'spots' && (
           <div className="max-w-7xl w-full mx-auto p-6 space-y-6 flex-1">
             
-            {/* Navigations-Brotkrümelpfad (Breadcrumbs) & Schnellauswahl */}
+            {/* Breadcrumbs & Navigation */}
             <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-3">
               <div className="flex items-center justify-between flex-wrap gap-3">
-                
-                {/* Statusanzeige / Zurück-Buttons */}
                 <div className="flex items-center space-x-2 text-sm font-semibold">
                   <button 
                     onClick={() => { selectContinent('Alle'); }}
@@ -310,7 +312,6 @@ export default function App() {
                   )}
                 </div>
 
-                {/* Suchleiste */}
                 <div className="relative min-w-[240px]">
                   <Search className="w-4 h-4 absolute left-3.5 top-3 text-slate-500" />
                   <input
@@ -323,7 +324,7 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Interaktive Klick-Kartenleiste für Kontinente oder Länder */}
+              {/* Schnellauswahl Buttons */}
               <div className="pt-2 border-t border-slate-900 flex flex-wrap gap-2">
                 {selectedContinent === 'Alle' ? (
                   <>
@@ -365,12 +366,12 @@ export default function App() {
             {/* Die Karte & Ergebnisse */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               
-              {/* Interaktive Weltkarte (Zoomt automatisch auf Auswahl) */}
-              <div className="bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden h-[540px] lg:col-span-2 shadow-xl relative">
-                <div id="leaflet-map" className="w-full h-full"></div>
+              {/* Interaktive Weltkarte (mit z-0 Fix) */}
+              <div className="bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden h-[540px] lg:col-span-2 shadow-xl relative z-0">
+                <div id="leaflet-map" className="w-full h-full min-h-[540px] bg-slate-950"></div>
               </div>
 
-              {/* Rechte Liste der Spots im aktuellen Kartenausschnitt */}
+              {/* Spots Liste */}
               <div className="lg:col-span-1 space-y-4">
                 <h2 className="text-sm font-bold flex items-center space-x-2 text-slate-300">
                   <MapPin className="text-cyan-400 w-4 h-4" />
