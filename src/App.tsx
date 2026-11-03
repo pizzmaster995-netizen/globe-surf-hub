@@ -19,6 +19,8 @@ interface Spot {
   level: string;
   season: string;
   continent: string;
+  lv: string;
+  suitable: string[];
 }
 
 interface CampListing {
@@ -124,7 +126,34 @@ const COUNTRIES: Record<string, { name: string; continent: string }> = {
 };
 
 const WAVES: Record<string, string> = { P: 'Pointbreak', R: 'Reefbreak', B: 'Beachbreak', F: 'Flusswelle', G: 'Big Wave' };
-const LEVELS: Record<string, string> = { A: 'Anfänger', F: 'Fortgeschritten', P: 'Profi', L: 'Alle Level' };
+const LEVELS: Record<string, string> = { A: 'Beginner', F: 'Intermediate', P: 'Pro', L: 'Alle Level' };
+
+type LevelFilter = 'Alle' | 'Beginner' | 'Intermediate' | 'Pro';
+const LEVEL_FILTERS: LevelFilter[] = ['Alle', 'Beginner', 'Intermediate', 'Pro'];
+const ALL_LEVELS = ['Beginner', 'Intermediate', 'Pro'];
+
+// Für welche Surfer-Level ist ein Spot geeignet? (Grundlage für Filter und Info-Chips)
+const SUITABLE: Record<string, string[]> = {
+  A: ['Beginner', 'Intermediate'],
+  F: ['Intermediate', 'Pro'],
+  P: ['Pro'],
+  L: ['Beginner', 'Intermediate', 'Pro']
+};
+
+const WAVE_INFO: Record<string, string> = {
+  Pointbreak: 'Die Welle läuft lang an einer Landzunge entlang: gleichmäßig und gut zu lesen, aber das Line-up ist oft voll.',
+  Reefbreak: 'Die Welle bricht über Riff oder Fels. Sie ist sauber geformt, bei Stürzen besteht aber Verletzungsgefahr im flachen Wasser.',
+  Beachbreak: 'Die Wellen brechen über Sandbänken. Das ist verzeihend, die Peaks wechseln aber mit Gezeit und Swell.',
+  Flusswelle: 'Die Welle entsteht durch Fluss, Strömung und Sandbank und hängt stark von Gezeit und Wasserstand ab.',
+  'Big Wave': 'Sehr große Wellen: nur für erfahrene Surfer mit Sicherheitsteam und passender Ausrüstung.'
+};
+
+const LEVEL_INFO: Record<string, string> = {
+  A: 'Gut für Einsteiger und alle, die sicherer werden wollen. Softboards und Surfschulen sind hier üblich.',
+  F: 'Du solltest sicher paddeln, Wellen selbst einschätzen und die Regeln im Line-up kennen.',
+  P: 'Nur für erfahrene Surfer: starke Strömung sowie kraftvolle oder gefährliche Wellen. Bedingungen vorher genau prüfen.',
+  L: 'Je nach Tag und Swell für alle Level geeignet. Bei großem Swell lieber vorsichtig sein.'
+};
 
 // Zeile: Name, Land (ISO), Region, Breitengrad, Längengrad, Wellentyp, Level, Beste Saison
 // Wellentyp: P=Point, R=Reef, B=Beach, F=Fluss, G=Big Wave | Level: A=Anfänger, F=Fortgeschritten, P=Profi, L=Alle
@@ -310,21 +339,57 @@ const SPOTS: Spot[] = RAW.map((r, i) => ({
   wave: WAVES[r[5]],
   level: LEVELS[r[6]],
   season: r[7],
-  continent: COUNTRIES[r[1]].continent
+  continent: COUNTRIES[r[1]].continent,
+  lv: r[6],
+  suitable: SUITABLE[r[6]]
 }));
 
-const BY_COUNTRY: Record<string, Spot[]> = {};
-SPOTS.forEach(s => {
-  if (!BY_COUNTRY[s.iso]) BY_COUNTRY[s.iso] = [];
-  BY_COUNTRY[s.iso].push(s);
-});
+type ByCountry = Record<string, Spot[]>;
 
-const countriesOf = (cont: string) =>
-  Object.keys(BY_COUNTRY)
+const groupByCountry = (list: Spot[]): ByCountry => {
+  const out: ByCountry = {};
+  list.forEach(s => {
+    if (!out[s.iso]) out[s.iso] = [];
+    out[s.iso].push(s);
+  });
+  return out;
+};
+
+const countriesOf = (by: ByCountry, cont: string) =>
+  Object.keys(by)
     .filter(iso => COUNTRIES[iso].continent === cont)
-    .sort((a, b) => BY_COUNTRY[b].length - BY_COUNTRY[a].length);
+    .sort((a, b) => by[b].length - by[a].length);
 
-const spotCountOf = (cont: string) => SPOTS.filter(s => s.continent === cont).length;
+const spotCountOf = (list: Spot[], cont: string) => list.filter(s => s.continent === cont).length;
+
+/* Fotos zu einem Spot von Wikimedia Commons (frei nutzbar, nach Koordinaten gesucht) */
+const IMG_CACHE: Record<string, string[]> = {};
+
+async function fetchSpotImages(s: Spot): Promise<string[]> {
+  if (IMG_CACHE[s.id]) return IMG_CACHE[s.id];
+  const base = 'https://commons.wikimedia.org/w/api.php?action=query&format=json&origin=*&prop=imageinfo&iiprop=url|mime&iiurlwidth=520&';
+  const pick = (d: any): string[] =>
+    Object.values(d?.query?.pages || {})
+      .sort((a: any, b: any) => (a.index || 0) - (b.index || 0))
+      .map((p: any) => p.imageinfo?.[0])
+      .filter((i: any) => i && i.mime === 'image/jpeg' && i.thumburl)
+      .map((i: any) => i.thumburl as string);
+
+  let urls: string[] = [];
+  try {
+    const r1 = await fetch(base + `generator=geosearch&ggsnamespace=6&ggslimit=12&ggsradius=3000&ggscoord=${s.lat}|${s.lng}`);
+    urls = pick(await r1.json());
+  } catch (e) { /* weiter mit Textsuche */ }
+  if (urls.length < 3) {
+    try {
+      const r2 = await fetch(base + `generator=search&gsrnamespace=6&gsrlimit=10&gsrsearch=${encodeURIComponent(s.name + ' ' + s.region + ' surf')}`);
+      urls = urls.concat(pick(await r2.json()));
+    } catch (e) { /* keine Bilder */ }
+  }
+  const result = Array.from(new Set(urls)).slice(0, 3);
+  IMG_CACHE[s.id] = result;
+  return result;
+}
 
 const CAMPS_LISTINGS: CampListing[] = [
   { id: 'c1', title: 'Solid Surf House Taghazout', location: 'Taghazout, Marokko', country: 'Marokko', price: 'ab 449 € / Woche', rating: 4.9, image: 'https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?w=600', type: 'Camp' },
@@ -344,6 +409,8 @@ export default function App() {
   const [selectedCountry, setSelectedCountry] = useState<string | null>(null);
   const [selectedSpotId, setSelectedSpotId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [levelFilter, setLevelFilter] = useState<LevelFilter>('Alle');
+  const [viewNonce, setViewNonce] = useState(0);
   const [user, setUser] = useState<{ name: string } | null>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [messages, setMessages] = useState([
@@ -359,6 +426,18 @@ export default function App() {
   const mapRef = useRef<any>(null);
   const layerRef = useRef<any>(null);
   const markersRef = useRef<Record<string, any>>({});
+
+  const visibleSpots = useMemo(
+    () => SPOTS.filter(s => levelFilter === 'Alle' || s.suitable.includes(levelFilter)),
+    [levelFilter]
+  );
+  const byCountry = useMemo(() => groupByCountry(visibleSpots), [visibleSpots]);
+
+  const changeLevel = (l: LevelFilter) => {
+    setLevelFilter(l);
+    const sel = SPOTS.find(sp => sp.id === selectedSpotId);
+    if (sel && l !== 'Alle' && !sel.suitable.includes(l)) setSelectedSpotId(null);
+  };
 
   const selectContinent = (cont: string | null) => {
     setSelectedContinent(cont);
@@ -413,9 +492,9 @@ export default function App() {
     if (!L) return;
 
     const map = L.map('leaflet-map', { zoomControl: true, minZoom: 2 }).fitBounds(WORLD_BOUNDS);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
-      subdomains: 'abcd',
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors',
+      className: 'dark-tiles',
       maxZoom: 18
     }).addTo(map);
 
@@ -455,7 +534,7 @@ export default function App() {
         layer.on('mouseover', () => layer.setStyle({ fillOpacity: 0.85 }));
         layer.on('mouseout', () => layer.setStyle(base));
         layer.on('click', () => selectContinent(cont));
-        layer.bindTooltip(`${cont} · ${spotCountOf(cont)} Spots`, { sticky: true });
+        layer.bindTooltip(`${cont} · ${spotCountOf(visibleSpots, cont)} Spots`, { sticky: true });
         group.addLayer(layer);
       });
       map.flyToBounds(WORLD_BOUNDS, { duration: 1.2 });
@@ -474,7 +553,7 @@ export default function App() {
     }
 
     geoFeatures.filter((x: any) => x.cont === selectedContinent).forEach((x: any) => {
-      const list = BY_COUNTRY[x.iso];
+      const list = byCountry[x.iso];
       const has = !!list;
       const isSel = x.iso === selectedCountry;
       const base = {
@@ -485,7 +564,7 @@ export default function App() {
       };
       const layer = L.geoJSON(x.f, { style: () => base });
       const label = COUNTRIES[x.iso]?.name ?? x.f.properties?.name;
-      layer.bindTooltip(has ? `${label} · ${list.length} Spots` : `${label} · noch keine Spots`, { sticky: true });
+      layer.bindTooltip(has ? `${label} · ${list.length} Spots` : `${label} · keine passenden Spots`, { sticky: true });
       if (has) {
         layer.on('mouseover', () => layer.setStyle({ fillOpacity: 0.8 }));
         layer.on('mouseout', () => layer.setStyle(base));
@@ -496,8 +575,8 @@ export default function App() {
 
     // Ebene 2: Zähler pro Land (auch für kleine Inselstaaten klickbar)
     if (!selectedCountry) {
-      countriesOf(selectedContinent).forEach(iso => {
-        const list = BY_COUNTRY[iso];
+      countriesOf(byCountry, selectedContinent).forEach(iso => {
+        const list = byCountry[iso];
         const lat = list.reduce((a, s) => a + s.lat, 0) / list.length;
         const lng = list.reduce((a, s) => a + s.lng, 0) / list.length;
         const icon = L.divIcon({
@@ -515,7 +594,7 @@ export default function App() {
     }
 
     // Ebene 3: alle Surfspots des gewählten Landes
-    const list = BY_COUNTRY[selectedCountry] || [];
+    const list = byCountry[selectedCountry] || [];
     list.forEach(s => {
       const icon = L.divIcon({
         className: '',
@@ -524,20 +603,14 @@ export default function App() {
         iconAnchor: [9, 9]
       });
       const m = L.marker([s.lat, s.lng], { icon }).addTo(group);
-      m.bindPopup(`
-        <div style="font-family: sans-serif; color:#0f172a;">
-          <b style="font-size:14px;">${s.name}</b><br/>
-          <span style="color:#64748b;font-size:11px;">${s.region}</span><br/>
-          <span style="font-size:11px;">${s.wave} · ${s.level}</span><br/>
-          <small style="color:#0284c7;font-weight:bold;">Beste Zeit: ${s.season}</small>
-        </div>
-      `);
+      m.bindTooltip(s.name);
+      m.on('click', () => setSelectedSpotId(s.id));
       markersRef.current[s.id] = m;
     });
     if (list.length) {
       map.flyToBounds(L.latLngBounds(list.map(s => [s.lat, s.lng])), { padding: [60, 60], maxZoom: 8, duration: 1.2 });
     }
-  }, [mapReady, geoFeatures, selectedContinent, selectedCountry]);
+  }, [mapReady, geoFeatures, selectedContinent, selectedCountry, byCountry, visibleSpots, viewNonce]);
 
   // 3) Auf einen einzelnen Spot zoomen und Infofenster öffnen
   useEffect(() => {
@@ -546,12 +619,10 @@ export default function App() {
     const map = mapRef.current;
     if (!marker || !map) return;
     map.flyTo(marker.getLatLng(), 11, { duration: 1.2 });
-    const t = setTimeout(() => marker.openPopup(), 1300);
-    return () => clearTimeout(t);
   }, [selectedSpotId]);
 
   const searchResults = searchQuery.trim()
-    ? SPOTS.filter(s => {
+    ? visibleSpots.filter(s => {
         const q = searchQuery.toLowerCase();
         return s.name.toLowerCase().includes(q) ||
           s.region.toLowerCase().includes(q) ||
@@ -559,11 +630,13 @@ export default function App() {
       })
     : [];
 
-  const countrySpots = selectedCountry ? BY_COUNTRY[selectedCountry] || [] : [];
+  const countrySpots = selectedCountry ? byCountry[selectedCountry] || [] : [];
+  const selectedSpot = SPOTS.find(sp => sp.id === selectedSpotId) || null;
   const leafletMissing = typeof window !== 'undefined' && !(window as any).L;
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col font-sans">
+      <style>{`.dark-tiles { filter: invert(1) hue-rotate(180deg) brightness(0.9) contrast(0.9) saturate(0.5); }`}</style>
       {/* Header Navigation */}
       <header className="border-b border-slate-800 bg-slate-950/90 backdrop-blur px-6 py-4 flex items-center justify-between sticky top-0 z-50">
         <div className="flex items-center space-x-3 cursor-pointer" onClick={() => setActiveTab('home')}>
@@ -721,6 +794,19 @@ export default function App() {
                     <span className="text-xs text-slate-500">Klicke auf einen Spot für Details.</span>
                   </>
                 )}
+
+                <div className="ml-auto flex items-center gap-1.5 flex-wrap">
+                  <span className="text-xs text-slate-500 mr-1">Surfer-Level:</span>
+                  {LEVEL_FILTERS.map(l => (
+                    <button
+                      key={l}
+                      onClick={() => changeLevel(l)}
+                      className={`px-3 py-1 rounded-xl text-xs font-medium transition ${levelFilter === l ? 'bg-cyan-500 text-slate-950 font-bold' : 'bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-800'}`}
+                    >
+                      {l}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
 
@@ -747,17 +833,19 @@ export default function App() {
                 <h2 className="text-sm font-bold flex items-center space-x-2 text-slate-300">
                   <MapPin className="text-cyan-400 w-4 h-4" />
                   <span>
-                    {searchQuery.trim()
+                    {selectedSpot && !searchQuery.trim()
+                      ? 'Spot-Details'
+                      : searchQuery.trim()
                       ? `Suchergebnisse (${searchResults.length})`
                       : !selectedContinent
                         ? `Kontinente (${CONTINENTS.length})`
                         : !selectedCountry
-                          ? `Länder in ${selectedContinent} (${countriesOf(selectedContinent).length})`
+                          ? `Länder in ${selectedContinent} (${countriesOf(byCountry, selectedContinent).length})`
                           : `Spots in ${COUNTRIES[selectedCountry].name} (${countrySpots.length})`}
                   </span>
                 </h2>
 
-                <div className="space-y-3 max-h-[480px] overflow-y-auto pr-2">
+                <div className="space-y-3 max-h-[540px] overflow-y-auto pr-2">
 
                   {/* Suche */}
                   {searchQuery.trim() && searchResults.map(s => (
@@ -768,7 +856,7 @@ export default function App() {
                   )}
 
                   {/* Ebene 1: Kontinente */}
-                  {!searchQuery.trim() && !selectedContinent && CONTINENTS.map(cont => (
+                  {!searchQuery.trim() && !selectedSpot && !selectedContinent && CONTINENTS.map(cont => (
                     <div
                       key={cont}
                       onClick={() => selectContinent(cont)}
@@ -778,7 +866,7 @@ export default function App() {
                         <span className="w-3.5 h-3.5 rounded-full" style={{ background: CONT_COLORS[cont] }}></span>
                         <div>
                           <h3 className="font-bold text-white">{cont}</h3>
-                          <p className="text-xs text-slate-400">{countriesOf(cont).length} Länder · {spotCountOf(cont)} Spots</p>
+                          <p className="text-xs text-slate-400">{countriesOf(byCountry, cont).length} Länder · {spotCountOf(visibleSpots, cont)} Spots</p>
                         </div>
                       </div>
                       <ChevronRight className="w-4 h-4 text-slate-500" />
@@ -786,7 +874,7 @@ export default function App() {
                   ))}
 
                   {/* Ebene 2: Länder */}
-                  {!searchQuery.trim() && selectedContinent && !selectedCountry && countriesOf(selectedContinent).map(iso => (
+                  {!searchQuery.trim() && !selectedSpot && selectedContinent && !selectedCountry && countriesOf(byCountry, selectedContinent).map(iso => (
                     <div
                       key={iso}
                       onClick={() => selectCountry(iso)}
@@ -794,16 +882,28 @@ export default function App() {
                     >
                       <div>
                         <h3 className="font-bold text-white">{COUNTRIES[iso].name}</h3>
-                        <p className="text-xs text-slate-400">{BY_COUNTRY[iso].length} Surfspots</p>
+                        <p className="text-xs text-slate-400">{byCountry[iso].length} Surfspots</p>
                       </div>
                       <ChevronRight className="w-4 h-4 text-slate-500" />
                     </div>
                   ))}
 
                   {/* Ebene 3: Spots */}
-                  {!searchQuery.trim() && selectedCountry && countrySpots.map(s => (
-                    <SpotCard key={s.id} spot={s} onClick={() => setSelectedSpotId(s.id)} active={selectedSpotId === s.id} />
+                  {!searchQuery.trim() && !selectedSpot && selectedCountry && countrySpots.map(s => (
+                    <SpotCard key={s.id} spot={s} onClick={() => setSelectedSpotId(s.id)} />
                   ))}
+                  {!searchQuery.trim() && !selectedSpot && selectedCountry && countrySpots.length === 0 && (
+                    <p className="text-xs text-slate-500">Keine Spots für dieses Level in diesem Land.</p>
+                  )}
+
+                  {/* Spot-Details mit Fotos */}
+                  {!searchQuery.trim() && selectedSpot && (
+                    <SpotDetail
+                      key={selectedSpot.id}
+                      spot={selectedSpot}
+                      onBack={() => { setSelectedSpotId(null); setViewNonce(n => n + 1); }}
+                    />
+                  )}
                 </div>
               </div>
 
@@ -942,11 +1042,11 @@ export default function App() {
 }
 
 /* Karte für einen einzelnen Surfspot in der Seitenliste */
-function SpotCard({ spot, onClick, active, showCountry }: { spot: Spot; onClick: () => void; active?: boolean; showCountry?: boolean }) {
+function SpotCard({ spot, onClick, showCountry }: { spot: Spot; onClick: () => void; showCountry?: boolean }) {
   return (
     <div
       onClick={onClick}
-      className={`bg-slate-950 p-4 rounded-2xl border cursor-pointer transition ${active ? 'border-cyan-500' : 'border-slate-800 hover:border-cyan-500'}`}
+      className="bg-slate-950 p-4 rounded-2xl border border-slate-800 hover:border-cyan-500 cursor-pointer transition"
     >
       <div className="flex justify-between items-start mb-1">
         <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
@@ -958,6 +1058,92 @@ function SpotCard({ spot, onClick, active, showCountry }: { spot: Spot; onClick:
       <div className="grid grid-cols-2 gap-1 bg-slate-900 p-2 rounded-xl text-[10px] text-slate-300 text-center border border-slate-800/60">
         <div><span className="text-slate-500 block text-[8px]">Wellentyp</span>{spot.wave}</div>
         <div><span className="text-slate-500 block text-[8px]">Beste Zeit</span>{spot.season}</div>
+      </div>
+    </div>
+  );
+}
+
+
+/* Detailansicht eines Spots: Fotos, Level und Infos */
+function SpotDetail({ spot, onBack }: { spot: Spot; onBack: () => void }) {
+  const [images, setImages] = useState<string[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchSpotImages(spot).then(urls => { if (!cancelled) setImages(urls); });
+    return () => { cancelled = true; };
+  }, [spot]);
+
+  return (
+    <div className="bg-slate-950 border border-cyan-500/40 rounded-2xl overflow-hidden">
+      {/* Fotos */}
+      {images === null ? (
+        <div className="h-40 bg-slate-900 animate-pulse" />
+      ) : images.length > 0 ? (
+        <div className="grid grid-cols-2 gap-0.5 bg-slate-900">
+          {images.map((url, i) => (
+            <img
+              key={url}
+              src={url}
+              alt={`${spot.name} ${i + 1}`}
+              loading="lazy"
+              className={`w-full object-cover ${i === 0 ? 'col-span-2 h-40' : 'h-24'}`}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="h-24 bg-slate-900 flex items-center justify-center text-xs text-slate-500">
+          Keine Fotos für diesen Spot gefunden
+        </div>
+      )}
+
+      <div className="p-4 space-y-4">
+        <button onClick={onBack} className="text-xs text-slate-400 hover:text-cyan-400 flex items-center gap-1">
+          <ArrowLeft className="w-3.5 h-3.5" /> Zurück zur Liste
+        </button>
+
+        <div>
+          <h3 className="text-lg font-bold text-white">{spot.name}</h3>
+          <p className="text-xs text-slate-400">{spot.region}, {COUNTRIES[spot.iso].name}</p>
+        </div>
+
+        <div>
+          <p className="text-[11px] text-slate-500 mb-1.5">Geeignet für</p>
+          <div className="flex gap-1.5 flex-wrap">
+            {ALL_LEVELS.map(l => {
+              const ok = spot.suitable.includes(l);
+              return (
+                <span
+                  key={l}
+                  className={`text-xs px-3 py-1 rounded-full border font-medium ${ok ? 'bg-cyan-500/15 text-cyan-400 border-cyan-500/40' : 'bg-slate-900 text-slate-600 border-slate-800 line-through'}`}
+                >
+                  {l}
+                </span>
+              );
+            })}
+          </div>
+          <p className="text-xs text-slate-300 mt-2">{LEVEL_INFO[spot.lv]}</p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-1 bg-slate-900 p-2 rounded-xl text-[11px] text-slate-300 text-center border border-slate-800/60">
+          <div><span className="text-slate-500 block text-[9px]">Wellentyp</span>{spot.wave}</div>
+          <div><span className="text-slate-500 block text-[9px]">Beste Zeit</span>{spot.season}</div>
+        </div>
+
+        <p className="text-xs text-slate-300">{WAVE_INFO[spot.wave]}</p>
+
+        <a
+          href={`https://www.google.com/maps?q=${spot.lat},${spot.lng}`}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-block bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs px-4 py-2 rounded-xl transition"
+        >
+          In Google Maps öffnen
+        </a>
+
+        <p className="text-[10px] text-slate-500">
+          Allgemeine Einschätzung. Prüfe vor Ort immer aktuelle Bedingungen und frage Locals. Fotos: Wikimedia Commons (Aufnahmen aus der Umgebung, nicht immer Surf-Motive).
+        </p>
       </div>
     </div>
   );
