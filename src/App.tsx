@@ -362,31 +362,55 @@ const countriesOf = (by: ByCountry, cont: string) =>
 
 const spotCountOf = (list: Spot[], cont: string) => list.filter(s => s.continent === cont).length;
 
-/* Fotos zu einem Spot von Wikimedia Commons (frei nutzbar, nach Koordinaten gesucht) */
+/* Eigene Fotos (optional): Hier kannst du pro Spot-Name Bild-Links eintragen, z. B.
+   'Pipeline': ['https://.../bild1.jpg', 'https://.../bild2.jpg']
+   Diese werden dann anstelle der automatischen Suche angezeigt. */
+const SPOT_IMAGES: Record<string, string[]> = {};
+
+/* Fotos zu einem Spot von Wikimedia Commons: nur Bilder, die Surfen/Wellen UND den Spot-Namen erwähnen */
 const IMG_CACHE: Record<string, string[]> = {};
+const STOP_WORDS = ['beach', 'bay', 'point', 'main', 'rocks', 'head', 'north', 'south', 'playa', 'praia', 'punta', 'surf'];
 
 async function fetchSpotImages(s: Spot): Promise<string[]> {
+  if (SPOT_IMAGES[s.name]) return SPOT_IMAGES[s.name].slice(0, 3);
   if (IMG_CACHE[s.id]) return IMG_CACHE[s.id];
-  const base = 'https://commons.wikimedia.org/w/api.php?action=query&format=json&origin=*&prop=imageinfo&iiprop=url|mime&iiurlwidth=520&';
-  const pick = (d: any): string[] =>
-    Object.values(d?.query?.pages || {})
-      .sort((a: any, b: any) => (a.index || 0) - (b.index || 0))
-      .map((p: any) => p.imageinfo?.[0])
-      .filter((i: any) => i && i.mime === 'image/jpeg' && i.thumburl)
-      .map((i: any) => i.thumburl as string);
 
-  let urls: string[] = [];
-  try {
-    const r1 = await fetch(base + `generator=geosearch&ggsnamespace=6&ggslimit=12&ggsradius=3000&ggscoord=${s.lat}|${s.lng}`);
-    urls = pick(await r1.json());
-  } catch (e) { /* weiter mit Textsuche */ }
-  if (urls.length < 3) {
+  const cleanName = s.name.replace(/\(.*?\)/g, '').trim();
+  const tokens = s.name
+    .toLowerCase()
+    .split(/[^a-zà-ÿ]+/)
+    .filter(t => t.length >= 4 && !STOP_WORDS.includes(t));
+  const keys = tokens.length ? tokens : [s.region.toLowerCase()];
+
+  const base = 'https://commons.wikimedia.org/w/api.php?action=query&format=json&origin=*&prop=imageinfo&iiprop=url|mime|extmetadata&iiextmetadatafilter=ImageDescription|Categories&iiurlwidth=520&generator=search&gsrnamespace=6&gsrlimit=20&gsrsearch=';
+
+  const run = async (q: string): Promise<string[]> => {
     try {
-      const r2 = await fetch(base + `generator=search&gsrnamespace=6&gsrlimit=10&gsrsearch=${encodeURIComponent(s.name + ' ' + s.region + ' surf')}`);
-      urls = urls.concat(pick(await r2.json()));
-    } catch (e) { /* keine Bilder */ }
-  }
-  const result = Array.from(new Set(urls)).slice(0, 3);
+      const r = await fetch(base + encodeURIComponent(q));
+      const d = await r.json();
+      return Object.values(d?.query?.pages || {})
+        .sort((a: any, b: any) => (a.index || 0) - (b.index || 0))
+        .filter((p: any) => {
+          const info = p.imageinfo?.[0];
+          if (!info || info.mime !== 'image/jpeg' || !info.thumburl) return false;
+          const meta = info.extmetadata || {};
+          const text = `${p.title} ${meta.ImageDescription?.value || ''} ${meta.Categories?.value || ''}`.toLowerCase();
+          const surf = /surf|wave|barrel|swell|breaker|welle/.test(text);
+          const named = keys.some(k => text.includes(k));
+          const bad = /map|karte|logo|flag|diagram|hotel|house|building|church|portrait/.test(p.title.toLowerCase());
+          return surf && named && !bad;
+        })
+        .map((p: any) => p.imageinfo[0].thumburl as string);
+    } catch (e) {
+      return [];
+    }
+  };
+
+  const [a, b] = await Promise.all([
+    run(`"${cleanName}" surfing wave`),
+    run(`${cleanName} ${s.region} surf`)
+  ]);
+  const result = Array.from(new Set([...a, ...b])).slice(0, 3);
   IMG_CACHE[s.id] = result;
   return result;
 }
@@ -1092,8 +1116,16 @@ function SpotDetail({ spot, onBack }: { spot: Spot; onBack: () => void }) {
           ))}
         </div>
       ) : (
-        <div className="h-24 bg-slate-900 flex items-center justify-center text-xs text-slate-500">
-          Keine Fotos für diesen Spot gefunden
+        <div className="h-28 bg-slate-900 flex flex-col items-center justify-center gap-2 text-xs text-slate-500 px-4 text-center">
+          <span>Keine passenden Surf-Fotos automatisch gefunden</span>
+          <a
+            href={`https://www.google.com/search?tbm=isch&q=${encodeURIComponent(spot.name + ' ' + spot.region + ' surf wave')}`}
+            target="_blank"
+            rel="noreferrer"
+            className="text-cyan-400 hover:text-cyan-300 font-semibold"
+          >
+            Surf-Fotos bei Google ansehen
+          </a>
         </div>
       )}
 
@@ -1142,7 +1174,7 @@ function SpotDetail({ spot, onBack }: { spot: Spot; onBack: () => void }) {
         </a>
 
         <p className="text-[10px] text-slate-500">
-          Allgemeine Einschätzung. Prüfe vor Ort immer aktuelle Bedingungen und frage Locals. Fotos: Wikimedia Commons (Aufnahmen aus der Umgebung, nicht immer Surf-Motive).
+          Allgemeine Einschätzung. Prüfe vor Ort immer aktuelle Bedingungen und frage Locals. Fotos: Wikimedia Commons, nur Bilder mit Surf-Bezug zum Spot.
         </p>
       </div>
     </div>
